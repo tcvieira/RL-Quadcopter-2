@@ -59,7 +59,7 @@ class Actor():
         loss = K.mean(-action_gradients*actions)
 
         # Define optimizers
-        optimizer = optimizers.Adam(lr=0.01)
+        optimizer = optimizers.Adam(lr=0.0001)
         updates_op = optimizer.get_updates(params=self.model.trainable_weights, loss=loss)
 
         
@@ -96,14 +96,14 @@ class Critic:
         net_states = layers.Dense(units=64, activation='relu')(net_states)
         
         #new
-        net_states = layers.Dense(units=128)(net_states)
+        #net_states = layers.Dense(units=128)(net_states)
 
         # Add hidden layer(s) for action pathway
         net_actions = layers.Dense(units=32, activation='relu')(actions)
         net_actions = layers.Dense(units=64, activation='relu')(net_actions)
         
         #new
-        net_actions = layers.Dense(units=128,activation="relu")(net_actions)
+        #net_actions = layers.Dense(units=128,activation="relu")(net_actions)
 
         # Try different layer sizes, activations, add batch normalization, regularizers, etc.
 
@@ -120,7 +120,7 @@ class Critic:
         self.model = models.Model(inputs=[states, actions], outputs=Q_values)
 
         # Define optimizer and compile model for training with built-in loss function
-        optimizer = optimizers.Adam(lr=0.01)
+        optimizer = optimizers.Adam(lr=0.001)
         self.model.compile(optimizer=optimizer, loss='mse')
 
         # Compute action gradients (derivative of Q values w.r.t. to actions)
@@ -209,7 +209,7 @@ class DDPG():
 
         # Replay memory
         self.buffer_size = 100000
-        self.batch_size = 64
+        self.batch_size = 256
         self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
 
         # Algorithm parameters

@@ -27,10 +27,40 @@ class Task():
         self.target_pos = target_pos if target_pos is not None else np.array([0., 0., 10.]) 
 
     def get_reward(self):
-        """Uses current pose of sim to return reward."""
-        #reward = 1 - 0.003*(abs(self.sim.pose[:3] - self.target_pos)).sum()
-        distance = abs(self.sim.pose[:3]- self.target_pos).sum()
-        reward = np.exp(-0.0001*distance)
+        """Uses current pose of sim to return reward."""    
+             
+        ## ATTEMPT 1 ##
+        #current_position = self.sim.pose[:3]
+        #target_position = self.target_pos[:3]
+        
+        # Penalize the copter when it is far away from its target position. 
+        # The closer the copter gets to its target, the smaller this 
+        # penalty becomes.
+        #reward = 1 - .1*((abs(current_position - target_position)).sum())**2 
+        #return reward
+        
+        ## ATEMPT 2 ##
+        #curr_pos = self.sim.pose[3:6]
+        #euler_angles = self.sim.pose[3:6]
+        #distance_from_target = np.sqrt(((curr_pos - self.target_pos)**2).sum())
+        
+        # Add penalty term for large euler angles and distance from target
+        #penalty = 10 * abs(euler_angles).sum() + 0.3 * distance_from_target
+
+        # Reward per step (long flights get rewarded)
+        #reward = 300
+        
+        #if distance_from_target < 10:
+        #    reward += 10000
+            
+        #return reward - penalty
+        
+        ## ATEMPT 3 ##
+        #distance = abs(self.sim.pose[:3]- self.target_pos).sum()
+        #reward = np.exp(-0.0001*distance)
+        
+        ## ATEMPT 4 ##
+        reward = 1 - 0.003*(abs(self.sim.pose[:3] - self.target_pos)).sum()
         return reward
 
     def step(self, rotor_speeds):
