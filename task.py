@@ -48,7 +48,7 @@ class Task():
         #penalty = 10 * abs(euler_angles).sum() + 0.3 * distance_from_target
 
         # Reward per step (long flights get rewarded)
-        #reward = 300
+        #reward = 10
         
         #if distance_from_target < 10:
         #    reward += 10000
@@ -57,10 +57,25 @@ class Task():
         
         ## ATEMPT 3 ##
         #distance = abs(self.sim.pose[:3]- self.target_pos).sum()
-        #reward = np.exp(-0.0001*distance)
+        #reward = np.exp(-0.0001*distance)      
+        
         
         ## ATEMPT 4 ##
         reward = 1 - 0.003*(abs(self.sim.pose[:3] - self.target_pos)).sum()
+        
+        
+        ## ATEMPT 5 ##
+        
+        # Reward for X,Y axis.
+        #reward_position = 0.4*(1-0.01*abs(self.sim.pose[:2] - self.target_pos[:2]).sum())
+        
+        # Reinforce more movement across z axis.
+        #reward_z_axis = 1-0.01*abs(self.sim.pose[2] - self.target_pos[2])        
+              
+        #reward = (reward_position + reward_z_axis)/1.4
+        
+        #reward = np.tanh(reward) # normalize reward to [-1, 1]
+        
         return reward
 
     def step(self, rotor_speeds):
@@ -71,6 +86,9 @@ class Task():
             done = self.sim.next_timestep(rotor_speeds) # update the sim pose and velocities
             reward += self.get_reward() 
             pose_all.append(self.sim.pose)
+            if self.sim.pose[2] >= self.target_pos[2]:  # agent has crossed the target height
+                reward += 10.0  # bonus reward
+                done = True
             if done:
                 reward += 10
         next_state = np.concatenate(pose_all)

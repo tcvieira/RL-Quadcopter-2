@@ -1,7 +1,7 @@
 import numpy as np
 from keras import layers, models, optimizers
 from keras import backend as K
-
+import copy
 import random
 from collections import namedtuple, deque
 
@@ -38,7 +38,8 @@ class Actor():
 
         net = layers.Dense(units=32, activation='relu')(states)
         net = layers.Dense(units=64, activation='relu')(net)
-        net = layers.Dense(units=128, activation='relu', kernel_regularizer = layers.regularizers.l2(1e-6))(net) 
+        net = layers.Dense(units=128, activation='relu')(net)    
+        #,kernel_initializer=layers.initializers.VarianceScaling()
 
         # Define output layers
         raw_actions = layers.Dense(units=self.action_size,activation='sigmoid',
@@ -59,7 +60,7 @@ class Actor():
         loss = K.mean(-action_gradients*actions)
 
         # Define optimizers
-        optimizer = optimizers.Adam(lr=0.0001)
+        optimizer = optimizers.Adam(lr = 0.001)
         updates_op = optimizer.get_updates(params=self.model.trainable_weights, loss=loss)
 
         
@@ -68,20 +69,20 @@ class Actor():
             outputs=[],
             updates=updates_op)
         
-class Critic:
-    """Critic (Value) Model."""
+class Critic():
+    """Critic model Q(s,a)"""
 
-    def __init__(self, state_size, action_size):
-        """Initialize parameters and build model.
-        Params
-        ======
-            state_size (int): Dimension of each state
-            action_size (int): Dimension of each action
+    def __init__(self,state_size,action_size):
+        """Initialize model
+        
+        Params:
+        =======
+            state_size(int): dimension of observation space
+            action_size(int): dimension of action space
         """
+
         self.state_size = state_size
         self.action_size = action_size
-
-        # Initialize any other variables here
 
         self.build_model()
 
@@ -92,35 +93,33 @@ class Critic:
         actions = layers.Input(shape=(self.action_size,), name='actions')
 
         # Add hidden layer(s) for state pathway
-        net_states = layers.Dense(units=32, activation='relu')(states)
-        net_states = layers.Dense(units=64, activation='relu')(net_states)
-        
-        #new
-        #net_states = layers.Dense(units=128)(net_states)
+        net_states = layers.Dense(units=64)(states)
+        # net_states = layers.BatchNormalization()(net_states)
+        net_states = layers.Activation("relu")(net_states)
+
+        net_states = layers.Dense(units=128)(net_states)
 
         # Add hidden layer(s) for action pathway
-        net_actions = layers.Dense(units=32, activation='relu')(actions)
-        net_actions = layers.Dense(units=64, activation='relu')(net_actions)
-        
-        #new
-        #net_actions = layers.Dense(units=128,activation="relu")(net_actions)
+        net_actions = layers.Dense(units=64)(actions)
+        # net_actions = layers.BatchNormalization()(net_actions)
+        net_actions = layers.Activation("relu")(net_actions)
 
-        # Try different layer sizes, activations, add batch normalization, regularizers, etc.
-
+        net_actions = layers.Dense(units=128,activation="relu")(net_actions)
         # Combine state and action pathways
         net = layers.Add()([net_states, net_actions])
         net = layers.Activation('relu')(net)
 
-        # Add more layers to the combined network if needed
-
         # Add final output layer to prduce action values (Q values)
-        Q_values = layers.Dense(units=1, name='q_values',kernel_regularizer=layers.regularizers.l2(0.01))(net)
-
+        Q_values = layers.Dense(units=1, name='q_values',kernel_initializer=layers.initializers.RandomUniform(minval=-0.003, maxval=0.003),
+        kernel_regularizer=layers.regularizers.l2(0.01))(net)
+        # 
+        # 
+        
         # Create Keras model
         self.model = models.Model(inputs=[states, actions], outputs=Q_values)
 
         # Define optimizer and compile model for training with built-in loss function
-        optimizer = optimizers.Adam(lr=0.001)
+        optimizer = optimizers.Adam(lr=0.01)
         self.model.compile(optimizer=optimizer, loss='mse')
 
         # Compute action gradients (derivative of Q values w.r.t. to actions)
@@ -132,30 +131,31 @@ class Critic:
             outputs=action_gradients)
         
 class ReplayBuffer:
-    """Fixed-size buffer to store experience tuples."""
+    """Fixed size buffer to store experience tuple"""
 
-    def __init__(self, buffer_size, batch_size):
-        """Initialize a ReplayBuffer object.
+    def __init__(self,buffer_size,batch_size):
+        """Initialize replay buffer.
         Params
         ======
             buffer_size: maximum size of buffer
             batch_size: size of each training batch
         """
-        self.memory = deque(maxlen=buffer_size)  # internal memory (deque)
+        self.memory = deque(maxlen=buffer_size)
         self.batch_size = batch_size
-        self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
+        self.experience = namedtuple("Experience",field_names=["state","action","reward","next_state",
+        "done"])
 
-    def add(self, state, action, reward, next_state, done):
-        """Add a new experience to memory."""
-        e = self.experience(state, action, reward, next_state, done)
+    def add_experience(self,state,action,reward,next_state,done):
+        """Add a new experience to memory"""
+        e = self.experience(state,action,reward,next_state,done)
         self.memory.append(e)
 
-    def sample(self, batch_size=64):
-        """Randomly sample a batch of experiences from memory."""
-        return random.sample(self.memory, k=self.batch_size)
+    def sample(self,batch_size=64):
+        """Randomly sample experience from memory"""
+        return random.sample(self.memory,k = self.batch_size)
 
     def __len__(self):
-        """Return the current size of internal memory."""
+        """Return length of buffer"""
         return len(self.memory)
 
 
@@ -171,7 +171,7 @@ class OUNoise:
 
     def reset(self):
         """Reset the internal state (= noise) to mean (mu)."""
-        self.state = self.mu
+        self.state = copy.copy(self.mu)
 
     def sample(self):
         """Update internal state and return it as a noise sample."""
@@ -181,25 +181,28 @@ class OUNoise:
         return self.state
 
 class DDPG():
-    """Reinforcement Learning agent that learns using DDPG."""
-    def __init__(self, task):
-        self.task = task
+    """Reinforcement learning agent who learns using DDPG"""
+
+    def __init__(self,task):
+        """Initialize models"""
+        self.env = task
         self.state_size = task.state_size
         self.action_size = task.action_size
-        self.action_low = task.action_low
         self.action_high = task.action_high
+        self.action_low = task.action_low
+        
 
-        # Actor (Policy) Model
-        self.actor_local = Actor(self.state_size, self.action_size, self.action_low, self.action_high)
-        self.actor_target = Actor(self.state_size, self.action_size, self.action_low, self.action_high)
+        # Initialize Actor (policy) models
+        self.actor_local = Actor(self.state_size,self.action_size,self.action_low,self.action_high)
+        self.actor_target = Actor(self.state_size,self.action_size,self.action_low,self.action_high)
 
-        # Critic (Value) Model
-        self.critic_local = Critic(self.state_size, self.action_size)
-        self.critic_target = Critic(self.state_size, self.action_size)
+        # Initialize Critic (value) models
+        self.critic_local = Critic(self.state_size,self.action_size)
+        self.critic_target = Critic(self.state_size,self.action_size)
 
         # Initialize target model parameters with local model parameters
-        self.critic_target.model.set_weights(self.critic_local.model.get_weights())
         self.actor_target.model.set_weights(self.actor_local.model.get_weights())
+        self.critic_target.model.set_weights(self.critic_local.model.get_weights())
 
         # Noise process
         self.exploration_mu = 0
@@ -207,42 +210,44 @@ class DDPG():
         self.exploration_sigma = 0.2
         self.noise = OUNoise(self.action_size, self.exploration_mu, self.exploration_theta, self.exploration_sigma)
 
-        # Replay memory
-        self.buffer_size = 100000
-        self.batch_size = 256
-        self.memory = ReplayBuffer(self.buffer_size, self.batch_size)
+        # Replay buffer
 
-        # Algorithm parameters
-        self.gamma = 0.99  # discount factor
-        self.tau = 0.01  # for soft update of target parameters
+        self.buffer_size = 100000 
+        self.batch_size = 64
+        self.memory = ReplayBuffer(self.buffer_size,self.batch_size)
 
-    def reset_episode(self):
+         # Algorithm parameters
+        self.gamma = 0.9  # discount factor
+        self.tau = 0.001  # for soft update of target parameters
+
+    def reset_episode(self,task):
+        """Return state after reseting task"""
         self.noise.reset()
-        state = self.task.reset()
+        state = task.reset()
         self.last_state = state
         return state
 
-    def step(self, action, reward, next_state, done):
-         # Save experience / reward
-        self.memory.add(self.last_state, action, reward, next_state, done)
+    def step(self,action,reward,next_state,done):
+        # Add experience to memory
+        self.memory.add_experience(self.last_state,action,reward,next_state,done)
 
-        # Learn, if enough samples are available in memory
+        # Learn is memory is larger than batch size
         if len(self.memory) > self.batch_size:
             experiences = self.memory.sample()
             self.learn(experiences)
-
-        # Roll over last state and action
+        
+        # Roll over state
         self.last_state = next_state
 
-    def act(self, state):
-        """Returns actions for given state(s) as per current policy."""
-        state = np.reshape(state, [-1, self.state_size])
+    def act(self,state):
+        """Returns action using the policy network """
+        state = np.reshape(state,[-1,self.state_size])
         action = self.actor_local.model.predict(state)[0]
-        return list(action + self.noise.sample())  # add some noise for exploration
+        return list(action+self.noise.sample())
 
-    def learn(self, experiences):
-        """Update policy and value parameters using given batch of experience tuples."""
-        # Convert experience tuples to separate arrays for each element (states, actions, rewards, etc.)
+    def learn(self,experiences):
+        # Convert experience tuples to separate arrays for each element
+
         states = np.vstack([e.state for e in experiences if e is not None])
         actions = np.array([e.action for e in experiences if e is not None]).astype(np.float32).reshape(-1, self.action_size)
         rewards = np.array([e.reward for e in experiences if e is not None]).astype(np.float32).reshape(-1, 1)
@@ -251,27 +256,36 @@ class DDPG():
 
         # Get predicted next-state actions and Q values from target models
         #     Q_targets_next = critic_target(next_state, actor_target(next_state))
-        actions_next = self.actor_target.model.predict_on_batch(next_states)
-        Q_targets_next = self.critic_target.model.predict_on_batch([next_states, actions_next])
+        actions_next = self.actor_target.model.predict(next_states)
+        Q_targets_next = self.critic_target.model.predict([next_states,actions_next])
 
         # Compute Q targets for current states and train critic model (local)
-        Q_targets = rewards + self.gamma * Q_targets_next * (1 - dones)
-        self.critic_local.model.train_on_batch(x=[states, actions], y=Q_targets)
-
+        Q_targets = rewards + self.gamma*Q_targets_next*(1-dones)
+        self.critic_local.model.train_on_batch(x=[states,actions],y=Q_targets)
         # Train actor model (local)
-        action_gradients = np.reshape(self.critic_local.get_action_gradients([states, actions, 0]), (-1, self.action_size))
-        self.actor_local.train_fn([states, action_gradients, 1])  # custom training function
+        action_gradients = np.reshape(self.critic_local.get_action_gradients([states,actions,0]),
+        [-1,self.action_size])
+        self.actor_local.train_fn([states,action_gradients,1])
 
         # Soft-update target models
-        self.soft_update(self.critic_local.model, self.critic_target.model)
-        self.soft_update(self.actor_local.model, self.actor_target.model)   
+        self.soft_update(self.actor_local.model,self.actor_target.model)
+        self.soft_update(self.critic_local.model,self.critic_target.model)
 
-    def soft_update(self, local_model, target_model):
-        """Soft update model parameters."""
+    def soft_update(self,local_model,target_model):
         local_weights = np.array(local_model.get_weights())
         target_weights = np.array(target_model.get_weights())
-
         assert len(local_weights) == len(target_weights), "Local and target model parameters must have the same size"
 
-        new_weights = self.tau * local_weights + (1 - self.tau) * target_weights
+        new_weights = self.tau*local_weights + (1-self.tau)*target_weights
         target_model.set_weights(new_weights)
+
+    def save_model(self,path):
+        self.actor_local.model.save_weights(path)
+
+    def load_model(self,path):
+        self.actor_local.model.load_weights(path)
+
+    def act_only(self,state):
+        state = np.reshape(state,[-1,self.state_size])
+        action = self.actor_local.model.predict(state)[0]
+        return list(action)
